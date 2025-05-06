@@ -1,7 +1,8 @@
 # Calculadora de Ponto Flutuante em Assembly x86-64
 
-Projeto da disciplina __________ do IFSP – **Assembly NASM + SSE2**  
-Autor: _____________________ • Prontuário: ________________
+Aluno: Rafael Baena Neto  
+Prontuário: GU3066916  
+Disciplina: POS.01178 (C1AOC) - Arquitetura, Organização e Redes de Computadores  
 
 ## 🧑‍🔧 Objetivo
 
@@ -22,7 +23,7 @@ Todos os requisitos do enunciado anexo foram atendidos :contentReference[oaicite
 | `calc.asm`         | Código-fonte principal, totalmente comentado                   |
 | `README.md`        | Este guia de uso                                               |
 | `fluxo.md`         | Fluxograma (Mermaid) do algoritmo                              |
-| `relatorio_final.md` | Relato técnico: decisões, bugs encontrados, resultados       |
+| `relatorio.md` | Relato técnico: decisões, bugs encontrados, resultados             |
 
 ## ⚙️ Compilação e Execução
 
@@ -56,34 +57,6 @@ Importante: Todas as chamadas variádicas (printf/scanf) recebem pilha alinhada 
 * Fluxograma entregue em Mermaid  
 
 
----
-
-## `fluxo.md` (Mermaid)
-
-<!-- fluxo.md -->
-
-```mermaid
-flowchart TD
-    A[Start] --> B[Ler primeiro numero]
-    B --> C{Operador == q?}
-    C -->|Sim| Z[Fim]
-    C -->|Nao| D[Ler operador]
-    D --> E[Ler segundo numero]
-    E --> F{Tipo de operacao}
-    F -->|+| G[addsd]
-    F -->|-| H[subsd]
-    F -->|*| I[mulsd]
-    F -->|/| J{Divisor zero?}
-    J -->|Sim| K[Erro: divisor zero]
-    K --> E
-    J -->|Nao| L[divsd]
-    G --> M[Guarda em acc]
-    H --> M
-    I --> M
-    L --> M
-    M --> N[printf resultado]
-    N --> C
-```
 
 
 
