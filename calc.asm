@@ -15,26 +15,42 @@
 ;  → Proteção p/ divisão por zero.
 ;  → Todas as operações em XMM (addsd, subsd, mulsd, divsd).
 ;
-;  Como montar e linkar (mantendo símbolos de debug):
-;      nasm -f elf64 -g -F dwarf calc.asm -o calc.o
-;      gcc  -g -no-pie calc.o -o calc
+; ============================================================================
+;
+;  Objetivos didáticos:
+;   • Demonstrar uso de instruções SSE2 (addsd/subsd/mulsd/divsd) para operar
+;     em double-precision (64 bits) no registrador XMM.
+;   • Expor a convenção de chamada System V AMD64 (registradores RDI, RSI…,
+;     XMM0 para argumentos flutuantes e retorno).
+;   • Evidenciar a exigência de pilha **alinhada a 16 bytes** antes de CALLs
+;     variádicas (`printf`, `scanf`) — causa clássica de SIGSEGV.
+;   • Tratar fluxo de controle com saltos (`cmp`/`je`/`jne`) e flags ZF.
+;
+;  Como compilar/linkar (mantendo símbolos de depuração):
+;       nasm -f elf64 -g -F dwarf calc.asm -o calc.o
+;       gcc  -g -no-pie calc.o -o calc
 ;  Execução:
-;      ./calc
+;       ./calc
 ; ============================================================================
 
-global  main
-extern  printf
+; ---------------- EXPORTAÇÕES E IMPORTAÇÕES ----------------
+global  main                 ; ponto de entrada reconhecido pelo linker
+
+extern  printf               ; funções variádicas da libc
 extern  scanf
-extern  exit                 ; libc exit(int)
+extern  exit                 ; encerramento limpo (exit(int))
 
+; -------------------- SEGMENTO SOMENTE LEITURA --------------------
 section .rodata
-    fmt_double      db  "%lf",0
-    fmt_char        db  " %c",0
-    fmt_out         db  "Resultado: %.15g",10,0   ; 15 dígitos significativos
 
+    ; Formatos de scanf / printf (terminados em NUL)
+    fmt_double      db  "%lf",0           ; lê double (scanf)
+    fmt_char        db  " %c",0           ; lê char, consumindo espaços/enter
+    fmt_out         db  "Resultado: %.15g",10,0  ; saída com 15 dígitos sig.
+
+    ; Mensagens de interface
     msg_banner1     db  10,"*** Calculadora x86-64 (NASM / SSE2) ***",10,0
     msg_banner2     db  "Operadores: +  -  *  /   |   q para sair",10,10,0
-
     msg_first       db  "Insira o primeiro número: ",0
     msg_nextop      db  "Insira operador (+ - * / ou q): ",0
     msg_second      db  "Insira o próximo número: ",0
@@ -42,52 +58,72 @@ section .rodata
     msg_goodbye     db  10,"Calculadora encerrada.",10,0
     msg_badop       db  "Operador inválido! Tente novamente.",10,0
 
+; -------------------- SEGMENTO NÃO INICIALIZADO --------------------
 section .bss
-    acc      resq 1          ; acumulador
-    temp     resq 1          ; segundo operando
-    op       resb 1          ; operador
+    acc      resq 1          ; double acumulador (8 bytes)
+    temp     resq 1          ; double do segundo operando
+    op       resb 1          ; char do operador
 
+; ===================================================================
+;                         CÓDIGO – .text
+; ===================================================================
 section .text
-main:
-    push rbp
-    mov  rbp, rsp
-    sub  rsp, 16             ; mantém %rsp alinhado a 16 B
 
-; -------- Banner --------
-    lea  rdi, [rel msg_banner1]
-    xor  eax, eax
+; ────────────────────────────────────────────────────────────────────
+; main:
+;   1. Alinha a pilha                    (push rbp / sub rsp,16)
+;   2. Mostra banner
+;   3. Lê primeiro número (scanf)
+;   4. Entra em loop de cálculo          (calc_loop)
+; ────────────────────────────────────────────────────────────────────
+main:
+    ; ---------- PRÓLOGO ----------
+    push rbp                 ; salva base pointer anterior
+    mov  rbp, rsp            ; estabelece novo frame (opcional, facilita debug)
+    sub  rsp, 16             ; reserva 16 bytes (mantém rsp % 16 == 0)
+
+    ; ---------- BANNER ----------
+    lea  rdi, [rel msg_banner1] ; 1º arg -> RDI (pointer)
+    xor  eax, eax            ; eax = número de vetores SSE passados (0)
     call printf
+
     lea  rdi, [rel msg_banner2]
     xor  eax, eax
     call printf
 
-; -------- Primeiro número --------
+; ---------- ENTRADA DO PRIMEIRO NÚMERO ----------
 get_first:
     lea  rdi, [rel msg_first]
     xor  eax, eax
     call printf
 
+    ; scanf("%lf", &acc)
     lea  rdi, [rel fmt_double]
-    lea  rsi, [rel acc]
+    lea  rsi, [rel acc]      ; 2º arg -> RSI
     xor  eax, eax
     call scanf
 
-; -------- Loop principal --------
+; ---------- LOOP PRINCIPAL ----------
 calc_loop:
+
+; ----- Solicita operador -----
 get_op:
     lea  rdi, [rel msg_nextop]
     xor  eax, eax
     call printf
 
+    ; scanf(" %c", &op)
     lea  rdi, [rel fmt_char]
     lea  rsi, [rel op]
     xor  eax, eax
     call scanf
 
+    ; testa se quer sair
     movzx eax, byte [op]
     cmp  al, 'q'
-    je   quit_program
+    je   quit_program         ; ZF=1 → jump
 
+    ; garante que seja um dos 4 operadores
     cmp  al, '+'
     je   read_second
     cmp  al, '-'
@@ -97,60 +133,76 @@ get_op:
     cmp  al, '/'
     je   read_second
 
-invalid_op:
+invalid_op:                   ; caiu aqui → operador inválido
     lea  rdi, [rel msg_badop]
     xor  eax, eax
     call printf
     jmp  calc_loop
 
+; ----- Solicita segundo número -----
 read_second:
     lea  rdi, [rel msg_second]
     xor  eax, eax
     call printf
 
+    ; scanf("%lf", &temp)
     lea  rdi, [rel fmt_double]
     lea  rsi, [rel temp]
     xor  eax, eax
     call scanf
 
-    movq xmm0, [acc]
-    movq xmm1, [temp]
+    ; carrega valores nos registradores XMM (SSE2)
+    movq xmm0, [acc]          ; acumulador → xmm0
+    movq xmm1, [temp]         ; novo operando → xmm1
 
+    ; Decisão de operação
     cmp  byte [op], '+'
     je   do_add
     cmp  byte [op], '-'
     je   do_sub
     cmp  byte [op], '*'
     je   do_mul
+    ; resto: divisão
 
-    ; divisão – testa zero
-    movq rax, xmm1
+    ; -------- Proteção divisão por zero --------
+    movq rax, xmm1            ; copia bits para RAX (mais fácil testar)
     test rax, rax
     jz   div_zero
     jmp  do_div
 
-do_add:  addsd xmm0, xmm1  jmp show_result
-do_sub:  subsd xmm0, xmm1  jmp show_result
-do_mul:  mulsd xmm0, xmm1  jmp show_result
-do_div:  divsd xmm0, xmm1  jmp show_result
+; ===== INSTRUÇÕES SSE2 DE ALTA PERFORMANCE =====
+do_add:  addsd xmm0, xmm1      ; xmm0 = xmm0 + xmm1
+        jmp  show_result
+do_sub:  subsd xmm0, xmm1      ; xmm0 = xmm0 - xmm1
+        jmp  show_result
+do_mul:  mulsd xmm0, xmm1      ; xmm0 = xmm0 * xmm1
+        jmp  show_result
+do_div:  divsd xmm0, xmm1      ; xmm0 = xmm0 / xmm1
+        jmp  show_result
 
+; -------- Tratamento de divisão por zero --------
 div_zero:
     lea  rdi, [rel msg_divzero]
     xor  eax, eax
     call printf
-    jmp  read_second
+    jmp  read_second           ; volta a pedir novo divisor
 
+; -------- Exibição do resultado --------
 show_result:
-    movq [acc], xmm0
-    lea  rdi, [rel fmt_out]
-    mov  eax, 1
-    call printf
-    jmp  calc_loop
+    movq [acc], xmm0           ; persiste em memória p/ próximo ciclo
 
+    ; printf("Resultado: %.15g", (double)xmm0);
+    lea  rdi, [rel fmt_out]
+    mov  eax, 1                ; 1 registro vector passado (xmm0)
+    call printf
+
+    jmp  calc_loop             ; reinicia ciclo
+
+; -------- Encerramento gracioso --------
 quit_program:
     lea  rdi, [rel msg_goodbye]
     xor  eax, eax
     call printf
 
-    xor  edi, edi
+    xor  edi, edi              ; exit(0)
     call exit
