@@ -3,7 +3,11 @@
 
 ## `fluxo.md` (Mermaid)
 
-<!-- fluxo.md -->
+<!--
+Aluno: Rafael Baena Neto
+Prontuário: GU3066916
+Disciplina: (C1AOC) Arquitetura, Organização e Redes de Computadores
+-->
 
 ```mermaid
 flowchart TD
