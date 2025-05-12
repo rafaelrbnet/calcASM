@@ -10,7 +10,7 @@ Disciplina: (C1AOC) Arquitetura, Organização e Redes de Computadores
 
 ```mermaid
 flowchart TD
-    A[Start] --> B[Ler primeiro numero]
+    A[Início] --> B[Ler primeiro numero]
     B --> C{Operador == q?}
     C -->|Sim| Z[Fim]
     C -->|Nao| D[Ler operador]
